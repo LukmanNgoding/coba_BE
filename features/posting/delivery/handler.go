@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	jwt "github.com/ALTA-Group-Project-Social-Media-Apps/Social-Media-Apps/features/JWT"
-	"github.com/ALTA-Group-Project-Social-Media-Apps/Social-Media-Apps/features/user/domain"
+	"github.com/ALTA-Group-Project-Social-Media-Apps/Social-Media-Apps/features/posting/domain"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -16,19 +16,19 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 )
 
-type userHandler struct {
+type postHandler struct {
 	srv domain.Service
 }
 
 func New(e *echo.Echo, srv domain.Service) {
-	handler := userHandler{srv: srv}
-	e.POST("/users", handler.AddUser())                                              //Register
-	e.POST("/login", handler.LoginUser())                                            //Login
-	e.PUT("/users/update", handler.updateUser(), middleware.JWT([]byte("R4hs!!a@"))) //Update
-	e.DELETE("/users", handler.DeleteByID(), middleware.JWT([]byte("R4hs!!a@")))     //Delete
+	handler := postHandler{srv: srv}
+	e.GET("", handler.ShowAllPost())
+	e.POST("/post", handler.AddPost(), middleware.JWT([]byte("R4hs!!a@")))
+	e.PUT("/post/update", handler.UpdatePost(), middleware.JWT([]byte("R4hs!!a@")))
+	e.DELETE("/post", handler.DeleteByID(), middleware.JWT([]byte("R4hs!!a@")))
 }
 
-func (us *userHandler) DeleteByID() echo.HandlerFunc {
+func (us *postHandler) DeleteByID() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		id := jwt.ExtractToken(c)
 		if id == 0 {
@@ -45,14 +45,20 @@ func (us *userHandler) DeleteByID() echo.HandlerFunc {
 	}
 }
 
-func (us *userHandler) AddUser() echo.HandlerFunc {
+func (us *postHandler) AddPost() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		var input RegisterFormat
+		var input AddFormat
+		input.ID = jwt.ExtractToken(c)
+		if input.ID == 0 {
+			return c.JSON(http.StatusUnauthorized, map[string]interface{}{
+				"message": "cannot validate token",
+			})
+		}
 		if err := c.Bind(&input); err != nil {
 			return c.JSON(http.StatusBadRequest, FailResponse("cannot bind input"))
 		}
 		cnv := ToDomain(input)
-		res, err := us.srv.AddUser(cnv)
+		res, err := us.srv.AddPost(cnv)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, FailResponse(err.Error()))
 		}
@@ -62,13 +68,11 @@ func (us *userHandler) AddUser() echo.HandlerFunc {
 
 }
 
-func (us *userHandler) updateUser() echo.HandlerFunc {
+func (us *postHandler) UpdatePost() echo.HandlerFunc {
 	return func(c echo.Context) error {
 		var input UpdateFormat
 		input.Username = c.FormValue("username")
-		input.Email = c.FormValue("email")
-		input.Password = c.FormValue("password")
-		input.Bio = c.FormValue("bio")
+		input.Content = c.FormValue("content")
 
 		file, err := c.FormFile("photo")
 		if err != nil {
@@ -106,7 +110,7 @@ func (us *userHandler) updateUser() echo.HandlerFunc {
 		}
 
 		cnv := ToDomain(input)
-		res, err := us.srv.UpdateProfile(cnv)
+		res, err := us.srv.UpdatePost(cnv)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, FailResponse(err.Error()))
 		}
@@ -116,20 +120,17 @@ func (us *userHandler) updateUser() echo.HandlerFunc {
 
 }
 
-func (us *userHandler) LoginUser() echo.HandlerFunc {
-	//autentikasi user login
+func (us *postHandler) ShowAllPost() echo.HandlerFunc {
 	return func(c echo.Context) error {
-		var resQry LoginFormat
-		if err := c.Bind(&resQry); err != nil {
+		var input AddFormat
+		if err := c.Bind(&input); err != nil {
 			return c.JSON(http.StatusBadRequest, FailResponse("cannot bind input"))
 		}
-
-		cnv := ToDomain(resQry)
-		res, err := us.srv.LoginUser(cnv)
+		cnv := ToDomain(input)
+		res, err := us.srv.AddPost(cnv)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, FailResponse(err.Error()))
 		}
-		token := us.srv.GenerateToken(res.ID)
-		return c.JSON(http.StatusCreated, SuccessLogin("berhasil register", token, ToResponse(res, "reg")))
+		return c.JSON(http.StatusCreated, SuccessResponse("Success get book", ToResponse(res, "all")))
 	}
 }
